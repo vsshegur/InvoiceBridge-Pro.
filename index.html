@@ -10,10 +10,10 @@
 </div>
 <div id="shell" hidden>
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">IB</div><div><strong>InvoiceBridge</strong><small>Mobile test • v0.5.2</small></div></div>
+    <div class="brand"><div class="brand-mark">IB</div><div><strong>InvoiceBridge</strong><small>Extraction testing • v0.6.0</small></div></div>
     <div class="top-actions"><span class="privacy-pill"><i></i> Local on this device</span><button class="btn ghost" id="logoutBtn">Copy diagnostics</button></div>
   </header>
-  <div class="test-banner"><strong>TEST BUILD</strong> Files remain in this device’s browser. No account sync, cloud backup or live Tally posting. Use sample data first.</div>
+  <div class="test-banner"><strong>EXTRACTION TEST</strong> Upload invoices and check OCR before matching Tally masters. Files stay in this device’s browser; no cloud sync or live Tally posting.</div>
   <main class="layout">
     <aside class="side">
       <div class="company-head"><label class="eyebrow" for="companySelect">ACTIVE TALLY COMPANY</label><select id="companySelect"><option value="vipul">VIPUL TEXTILES</option><option value="vijayalaxmi">VIJAYALAXMI TEXTILES</option></select><p class="hint">Each company has separate masters and invoice history on this device.</p></div>
@@ -21,40 +21,52 @@
       <label class="upload-area" id="uploadArea"><span class="upload-visual">↑</span><strong>Upload or take photo</strong><span>Image, PDF, Excel or CSV</span><span class="hint">JPG · PNG · PDF · XLSX · XLS · CSV</span><input type="file" id="invoiceFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.csv,image/*" multiple hidden></label>
       <div class="status-note" id="uploadStatus" hidden role="status" aria-live="polite"></div><div class="quick-actions"><label class="btn primary camera-btn">📷 Take photo<input type="file" id="cameraFile" accept="image/*" capture="environment" hidden></label><button class="btn secondary" id="demoBtn" type="button">Try demo</button><button class="btn secondary" id="backupBtn" type="button">Export backup</button></div><label class="language-label">OCR language <select id="ocrLanguage"><option value="eng">English (fastest)</option><option value="eng+hin+mar">English + Hindi + Marathi (slower)</option></select></label>
       <div class="queue" id="docList"><div class="empty-mini">No invoices uploaded.</div></div>
-      <div class="masters-card"><div class="masters-top"><span class="icon-circle">⚙</span><strong>Tally masters</strong></div><div class="muted small" id="masterCount">No masters loaded</div><label class="btn secondary full filelabel">Import master XML<input type="file" id="masterFile" accept=".xml,text/xml,application/xml" hidden></label><div class="hint">Export All Masters XML from the correct Tally company. Uploading replaces that company's master cache.</div></div>
+      <div class="masters-card"><div class="masters-top"><span class="icon-circle">⚙</span><strong>Tally mapping (optional)</strong></div><div class="muted small" id="masterCount">No masters loaded</div><label class="btn secondary full filelabel">Import master XML<input type="file" id="masterFile" accept=".xml,text/xml,application/xml" hidden></label><div class="hint">Not needed for OCR testing. Import later when you are ready to match and export Tally entries.</div></div>
     </aside>
     <section class="workarea">
-      <div class="no-selection" id="emptyState"><div class="no-graphic"><span>▤</span><span class="mini-arrow">→</span><span>✓</span></div><h1>Turn bills into verified entries.</h1><p>Upload a supplier invoice to extract its details. Match existing Tally masters, review every amount and approve the voucher before exporting XML.</p><div class="stats"><div><strong>01</strong><span>Upload</span></div><div><strong>02</strong><span>Review</span></div><div><strong>03</strong><span>Approve</span></div><div><strong>04</strong><span>Export</span></div></div></div>
+      <div class="no-selection" id="emptyState"><div class="no-graphic"><span>▤</span><span class="mini-arrow">→</span><span>✓</span></div><h1>Scan an invoice. Review every field.</h1><p>Upload a photo, PDF, or spreadsheet. Correct OCR values and verify the extracted invoice first. No Tally masters are required at this stage.</p><div class="stats"><div><strong>01</strong><span>Upload</span></div><div><strong>02</strong><span>Review</span></div><div><strong>03</strong><span>Approve</span></div><div><strong>04</strong><span>Export</span></div></div></div>
       <div class="review-screen" id="reviewScreen" hidden>
-        <div class="review-head"><div><div class="eyebrow">PURCHASE VOUCHER DRAFT</div><h1 id="reviewTitle">Invoice review</h1><p id="documentInfo" class="muted"></p></div><div id="statusPill" class="status-chip draft">Draft · Not approved</div></div>
-        <div class="review-tools"><button id="saveBtn" class="btn secondary">Save changes</button><button id="validateBtn" class="btn secondary">Run checks</button><button id="approveBtn" class="btn primary">✓ Approve</button><button id="exportBtn" class="btn dark" disabled>↓ Export Tally XML</button></div>
+        <div class="review-head"><div><div class="eyebrow">INVOICE DATA EXTRACTION</div><h1 id="reviewTitle">Invoice review</h1><p id="documentInfo" class="muted"></p></div><div id="statusPill" class="status-chip draft">Draft · Not approved</div></div>
+        <div class="review-tools"><button id="saveBtn" class="btn secondary" type="button">Save draft</button><button id="validateBtn" class="btn secondary" type="button">Check extracted data</button><button id="verifyBtn" class="btn primary" type="button">✓ Verify extraction</button></div>
         <div class="ocr-panel" id="ocrPanel" role="status"><div><strong id="ocrStatusTitle">Checking extraction…</strong><p id="ocrStatusText" class="muted small">Extracted details must be verified against the original invoice.</p></div><button id="ocrRetryBtn" class="btn secondary" type="button">↻ Retry OCR</button></div>
         <div class="feedback" id="feedback" hidden></div>
         <div class="editor-columns">
           <div class="original-panel"><div class="panel-title"><strong>Original document</strong><span>Reference</span></div><div id="originalContainer" class="original-container"></div><div class="panel-title text-top"><strong>Extracted text</strong><span>OCR and extracted text are unverified</span></div><pre class="raw-box" id="rawText"></pre></div>
           <form id="reviewForm" class="entry-panel" onsubmit="return false">
-            <div class="panel-title"><strong>Voucher details</strong><span>All fields are editable</span></div>
-            <div class="form-grid"><label class="wide">Supplier name on invoice <span class="required">*</span><input required name="supplier_name" placeholder="As printed on supplier invoice"></label><label class="wide">Matched supplier ledger in Tally <span class="required">*</span><input required name="supplier_ledger" list="supplierChoices" placeholder="Choose exact existing Tally creditor ledger"><datalist id="supplierChoices"></datalist></label>
+            <div class="panel-title"><strong>Extracted invoice fields</strong><span>Editable · No Tally masters needed</span></div>
+            <div class="form-grid"><label class="wide">Supplier name on invoice <span class="required">*</span><input required name="supplier_name" placeholder="As printed on supplier invoice"></label>
             <label>Supplier GSTIN<input name="supplier_gstin" placeholder="Optional, verify with source" maxlength="15"></label>
             <label>Invoice number <span class="required">*</span><input name="invoice_number" required></label>
             <label>Invoice date <span class="required">*</span><input name="invoice_date" type="date" required></label>
             <label>Original grand total (₹) <span class="required">*</span><input name="invoice_total" inputmode="decimal" required placeholder="As printed on invoice"></label>
-            <label>GST transaction<select name="gst_mode"><option value="intra">Within state (CGST + SGST)</option><option value="inter">Inter-state (IGST)</option></select></label>
-            <label>Purchase ledger <span class="required">*</span><input list="ledgerChoices" name="purchase_ledger" placeholder="Choose from Tally"></label></div>
+            <label>Printed taxable value (₹)<input name="source_taxable" inputmode="decimal" placeholder="If shown on invoice"></label>
+            <label>Printed CGST (₹)<input name="source_cgst" inputmode="decimal" placeholder="If shown"></label>
+            <label>Printed SGST (₹)<input name="source_sgst" inputmode="decimal" placeholder="If shown"></label>
+            <label>Printed IGST (₹)<input name="source_igst" inputmode="decimal" placeholder="If shown"></label></div>
             <datalist id="ledgerChoices"></datalist><datalist id="stockChoices"></datalist>
-            <div class="sub-head"><strong>Stock items</strong><button type="button" id="addLineBtn" class="btn smallbtn secondary">+ Add item</button></div><div id="lineItems"></div>
-            <div class="sub-head"><strong>GST, other charges & mapping</strong></div>
+            <div class="sub-head"><strong>Invoice items (as printed)</strong><button type="button" id="addLineBtn" class="btn smallbtn secondary">+ Add item</button></div><div id="lineItems"></div>
+            <div class="sub-head"><strong>Other invoice charges</strong></div>
             <div class="form-grid">
-              <label>CGST ledger<input name="tax_cgst_ledger" list="ledgerChoices" placeholder="Exact Tally ledger"></label>
-              <label>SGST ledger<input name="tax_sgst_ledger" list="ledgerChoices" placeholder="Exact Tally ledger"></label>
-              <label>IGST ledger<input name="tax_igst_ledger" list="ledgerChoices" placeholder="Exact Tally ledger"></label>
+              <label>GST transaction<select name="gst_mode"><option value="intra">Within state (CGST + SGST)</option><option value="inter">Inter-state (IGST)</option></select></label>
               <label>Freight (₹)<input name="freight" type="number" step="0.01" value="0"></label>
-              <label>Freight ledger<input name="freight_ledger" list="ledgerChoices"></label>
               <label>Round-off (+/− ₹)<input name="round_off" type="number" step="0.01" value="0"></label>
-              <label>Round-off ledger<input name="round_ledger" list="ledgerChoices"></label>
             </div>
-            <div id="totalsBox" class="totals-box"><strong>Calculated voucher amount</strong><span>Run checks to calculate</span></div>
-            <div class="warning-box"><strong>Approval is mandatory</strong><p>No invoice is posted to Tally automatically. This version exports XML only after validation and approval. First test in a COPY of your Tally company; do not import directly into live accounting.</p></div>
+            <div id="totalsBox" class="totals-box"><strong>Extracted invoice total</strong><span>Check data above</span></div>
+            <div class="warning-box"><strong>OCR review first</strong><p>Uncertain readings are left blank or flagged. Verify the photo and correct item descriptions, quantities, rate, printed amounts and GST. Nothing is automatically posted to Tally.</p></div>
+            <details class="mapping-panel" id="tallyMapping"><summary>Later: link supplier and items to Tally <span>Optional during extraction testing</span></summary>
+              <div class="hint mapping-intro">Missing supplier? Mark it as new. Different item name in Tally? Enter that existing item's name beside the printed description. Unmatched records can still be saved and extraction-verified; Tally XML export requires imported, matched masters.</div>
+              <div class="form-grid">
+                <label>Supplier mapping<select name="supplier_match_status"><option value="pending">Not linked yet</option><option value="existing">Existing Tally supplier</option><option value="new">New supplier / ledger not created</option></select></label>
+                <label>Link to Tally supplier ledger<input name="supplier_ledger" list="supplierChoices" placeholder="Exact ledger, if it exists"><datalist id="supplierChoices"></datalist></label>
+                <label>Purchase ledger<input name="purchase_ledger" list="ledgerChoices" placeholder="Choose from Tally, later"></label>
+                <label>CGST ledger<input name="tax_cgst_ledger" list="ledgerChoices"></label>
+                <label>SGST ledger<input name="tax_sgst_ledger" list="ledgerChoices"></label>
+                <label>IGST ledger<input name="tax_igst_ledger" list="ledgerChoices"></label>
+                <label>Freight ledger<input name="freight_ledger" list="ledgerChoices"></label>
+                <label>Round-off ledger<input name="round_ledger" list="ledgerChoices"></label>
+              </div>
+              <div class="mapping-tools"><button id="tallyValidateBtn" type="button" class="btn secondary">Check Tally readiness</button><button id="approveBtn" type="button" class="btn secondary">Approve for XML</button><button id="exportBtn" type="button" class="btn dark" disabled>↓ Export Tally XML</button></div>
+            </details>
           </form>
         </div>
       </div>

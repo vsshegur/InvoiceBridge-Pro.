@@ -80,17 +80,34 @@ function findTotal(lines){
   return '';
 }
 function detectedItems(lines){
- const items=[];let rejected=0;
- // Common printed bill rows: <description> <HSN> <qty> <unit> <rate> [per] <amount>.
- const row=/^\s*(?:\d+[.)]\s*)?(.{5,80}?)\s+(?:\d{4,8}\s+)?([\d,]+(?:\.\d{1,3})?)\s+(PCS|NOS|NO|KG|KGS|MTR|MTS|METER|METRE|DOZ|BOX|SET|BAG)\s+([\d,]+(?:\.\d{1,4})?)\s+(?:(?:PCS|NOS|NO|KG|KGS|MTR|MTS|METER|METRE)\s+)?([\d,]+\.\d{2})\s*$/i;
- for(const line of lines){const m=line.match(row);if(!m)continue;
+ const items=[];let ambiguous=0;
+ // Keep the printed amount even when Tally rounds a displayed unit rate. No silent correction.
+ const row=/^\s*(?:\d+[.)]\s*)?(.{5,90}?)\s+(\d{4,8})\s+([\d,]+(?:\.\d{1,3})?)\s+(PCS|NOS|NO|KG|KGS|MTR|MTS|METER|METRE|DOZ|BOX|SET|BAG)\s+([\d,]+(?:\.\d{1,4})?)\s+(?:(?:PCS|NOS|NO|KG|KGS|MTR|MTS|METER|METRE)\s+)?([\d,]+\.\d{2})\s*$/i;
+ const rowNoHSN=/^\s*(?:\d+[.)]\s*)?(.{5,90}?)\s+([\d,]+(?:\.\d{1,3})?)\s+(PCS|NOS|NO|KG|KGS|MTR|MTS|METER|METRE|DOZ|BOX|SET|BAG)\s+([\d,]+(?:\.\d{1,4})?)\s+(?:(?:PCS|NOS|NO|KG|KGS|MTR|MTS|METER|METRE)\s+)?([\d,]+\.\d{2})\s*$/i;
+ for(const line of lines){
+   let m=line.match(row),hsn='';if(m){hsn=m[2];m=[m[0],m[1],m[3],m[4],m[5],m[6]];}else m=line.match(rowNoHSN);
+   if(!m)continue;
    const qty=Number(m[2].replace(/,/g,'')),rate=Number(m[4].replace(/,/g,'')),gross=Number(m[5].replace(/,/g,''));
-   if(!Number.isFinite(qty)||!Number.isFinite(rate)||!Number.isFinite(gross)||qty<=0||rate<=0||gross<=0)continue;
-   if(Math.abs(qty*rate-gross)>Math.max(0.03,gross*0.00002)){rejected++;continue;}
-   items.push({description:trim(m[1]),stock_item:'',qty:String(qty),unit:m[3].toUpperCase(),rate:String(rate),gst_rate:'0',discount:'0'});
+   if(!Number.isFinite(qty)||!Number.isFinite(rate)||!Number.isFinite(gross)||qty<=0||rate<0||gross<0)continue;
+   if(Math.abs(qty*rate-gross)>0.03)ambiguous++;
+   items.push({description:trim(m[1]),hsn,stock_item:'',item_mapping_status:'pending',qty:String(qty),unit:m[3].toUpperCase(),rate:String(rate),source_amount:String(gross),gst_rate:'',discount:'0'});
    if(items.length>=80)break;
  }
- return {items,rejected};
+ return {items,ambiguous};
+}
+function findSourceTaxes(lines){
+ const result={source_taxable:'',source_cgst:'',source_sgst:'',source_igst:''};
+ const matchers={source_taxable:/^(?:taxable\s*(?:amount|value)|sub\s*total)\b/i,source_cgst:/^(?:output\s+)?C\.?G\.?S\.?T\.?\b/i,source_sgst:/^(?:output\s+)?S\.?G\.?S\.?T\.?\b/i,source_igst:/^(?:output\s+)?I\.?G\.?S\.?T\.?\b/i};
+ for(const line of lines){
+  for(const [key,re] of Object.entries(matchers)){
+   const m=line.match(re);if(!m)continue;
+   const rest=line.slice(m[0].length).replace(/^\s*[:=-]\s*/,'');
+   // Never use the percentage (2.5%) in place of the tax amount.
+   const numbers=[...rest.matchAll(/(?:₹|Rs\.?\s*)?([\d,]+\.\d{2})\b/g)].map(x=>x[1].replace(/,/g,''));
+   if(numbers.length)result[key]=numbers.at(-1);
+  }
+ }
+ return result;
 }
 export function parseInvoiceText(raw,notes,{emptyReview,parseDate}){
  const text=String(raw??'').slice(0,150000);
@@ -100,6 +117,7 @@ export function parseInvoiceText(raw,notes,{emptyReview,parseDate}){
  result.invoice_number=findInvoiceNumber(lines);
  result.invoice_date=findInvoiceDate(lines,parseDate);
  result.invoice_total=findTotal(lines);
+ Object.assign(result,findSourceTaxes(lines));
  const gst=[...text.matchAll(/\b\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]\b/gi)].map(x=>x[0].toUpperCase());
  result.detected_gstins=[...new Set(gst)].slice(0,10);
  // Supplier GSTIN is suggested only when a GSTIN label appears before the 'Buyer / Bill to' section.
@@ -111,7 +129,7 @@ export function parseInvoiceText(raw,notes,{emptyReview,parseDate}){
  }
  const extracted=detectedItems(lines);result.lines=extracted.items;
  result.notes=[...notes,`OCR extracted ${text.trim().length} text characters and suggested ${[result.supplier_name,result.invoice_number,result.invoice_date,result.invoice_total].filter(Boolean).length}/4 invoice fields.`,
-  ...(extracted.rejected?[`${extracted.rejected} ambiguous item row(s) were not prefilled because quantity × rate did not match the printed amount.`]:[]),
+  ...(extracted.ambiguous?[`${extracted.ambiguous} printed item amount(s) differ from quantity × the displayed rate. Kept both source values for review.`]:[]),
   'Suggested OCR values must be compared against the source. All Tally stock items, ledgers, GST rates and totals require explicit verification.'];
  return result;
 }

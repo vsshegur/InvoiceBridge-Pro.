@@ -58,17 +58,81 @@ export function parseMasters(xml){if(typeof xml!=='string'||xml.length>20*1024*1
  result.push({kind:kind==='STOCKITEM'?'stock':kind.toLowerCase(),name,parent:get('PARENT'),unit:get('BASEUNITS'),gstin:upper(gstNodes.find(x=>clean(x.textContent))?.textContent||'')});}
  const unique=new Map(result.map(x=>[x.kind+'|'+low(x.name),x]));if(!unique.size)throw Error('No Tally ledgers, groups or stock items found');return [...unique.values()];}
 export function isCreditor(row,masters){const parents=new Map(masters.filter(x=>x.kind==='group').map(x=>[low(x.name),low(x.parent)]));let node=low(row.parent);const seen=new Set();while(node&&!seen.has(node)){if(node==='sundry creditors')return true;seen.add(node);node=parents.get(node)||''}return false;}
-export function emptyReview(){return {supplier_name:'',supplier_ledger:'',supplier_gstin:'',invoice_number:'',invoice_date:'',invoice_total:'',purchase_ledger:'',tax_cgst_ledger:'',tax_sgst_ledger:'',tax_igst_ledger:'',freight_ledger:'',round_ledger:'',gst_mode:'intra',freight:'0',round_off:'0',lines:[],notes:[],detected_gstins:[]}}
+export function emptyReview(){return {supplier_name:'',supplier_ledger:'',supplier_match_status:'pending',supplier_gstin:'',invoice_number:'',invoice_date:'',invoice_total:'',source_taxable:'',source_cgst:'',source_sgst:'',source_igst:'',purchase_ledger:'',tax_cgst_ledger:'',tax_sgst_ledger:'',tax_igst_ledger:'',freight_ledger:'',round_ledger:'',gst_mode:'intra',freight:'0',round_off:'0',lines:[],notes:[],detected_gstins:[]}}
 export function extractGuess(raw,notes=[]){return parseInvoiceText(raw,notes,{emptyReview,parseDate});}
-export function simpleCSVRows(text){const rows=text.replace(/^\uFEFF/,'').split(/\r?\n/).slice(0,800).map(line=>line.split(',').map(v=>v.replace(/^"|"$/g,'').trim()));
- // This limited parser handles simple spreadsheets only; mixed CSV quoting must be manually reviewed.
- let headerIndex=rows.findIndex(r=>r.some(v=>/^(item|product|description|item name)$/i.test(v))&&r.some(v=>/^qty|quantity$/i.test(v))&&r.some(v=>/^rate|price$/i.test(v)));
- if(headerIndex<0)return [];
- const h=rows[headerIndex].map(x=>x.toLowerCase());let ix=h.findIndex(x=>/^(item|product|description|item name)$/.test(x)),q=h.findIndex(x=>/^qty|quantity$/.test(x)),r=h.findIndex(x=>/^rate|price$/.test(x));
- const g=h.findIndex(x=>/^gst|gst%|tax rate$/.test(x));const unit=h.findIndex(x=>/^unit|uom$/.test(x));const items=[];
- for(const row of rows.slice(headerIndex+1)){const description=clean(row[ix]);if(!description||/total/i.test(description))break;if(!row[q]||!row[r])continue;
- items.push({description,stock_item:'',qty:row[q],unit:unit<0?'':row[unit],rate:row[r],gst_rate:g<0?'5':row[g],discount:'0'});if(items.length>=120)break;}
- return items;}
+/** Lightweight quoted CSV parser supporting commas, escaped quotes and newlines. */
+export function simpleCSVRows(text){
+ const rows=[],row=[];let cell='',quoted=false;
+ const input=String(text??'').replace(/^\uFEFF/,'');
+ for(let i=0;i<input.length;i++){
+  const ch=input[i];
+  if(ch==='"'){
+   if(quoted&&input[i+1]==='"'){cell+='"';i++;}else quoted=!quoted;
+  }else if(ch===','&&!quoted){row.push(cell);cell='';}
+  else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&input[i+1]==='\n')i++;row.push(cell);rows.push([...row]);row.length=0;cell='';if(rows.length>=1500)break;}
+  else cell+=ch;
+ }
+ if(cell||row.length){row.push(cell);rows.push([...row]);}
+ return parseTableRows(rows);
+}
+/** Direct spreadsheet extraction. Uses cell values, never OCR. */
+export function parseTableRows(rows){
+ const result=[];if(!Array.isArray(rows))return result;
+ const normal=s=>clean(s).toLowerCase().replace(/[()_%\s./-]+/g,' ').trim();
+ const patterns={description:/^(?:description(?: of goods)?|item(?: name)?|product(?: name)?|goods)$/,qty:/^(?:qty|quantity|no of pcs|pcs)$/,rate:/^(?:rate|unit price|price|rate per unit)$/,gst_rate:/^(?:gst|gst rate|tax rate|gst percent)$/,unit:/^(?:unit|uom|per)$/,source_amount:/^(?:amount|total amount|line total|taxable amount|value)$/,hsn:/^(?:hsn|hsn sac|hsn code|sac code)$/};
+ let headers=null;
+ for(const row of rows.slice(0,800)){
+  if(!Array.isArray(row))continue;
+  const values=row.map(x=>clean(x));
+  if(!headers){const normalized=values.map(normal);const m={};for(const [field,re] of Object.entries(patterns)){const i=normalized.findIndex(x=>re.test(x));if(i>=0)m[field]=i;}if(['description','qty','rate'].every(k=>m[k]!==undefined))headers=m;continue;}
+  const description=values[headers.description]||'';if(!description)continue;if(/^(?:total|grand total|sub total|subtotal)$/i.test(description))break;
+  const qty=values[headers.qty]||'',rate=values[headers.rate]||'';if(!qty||!rate)continue;
+  const val=k=>headers[k]===undefined?'':(values[headers[k]]||'');
+  result.push({description,stock_item:'',item_mapping_status:'pending',hsn:val('hsn'),qty,rate,unit:val('unit'),gst_rate:val('gst_rate'),source_amount:val('source_amount'),discount:'0'});
+  if(result.length>=120)break;
+ }
+ return result;
+}
+export function checkExtraction(v,otherDocs=[],currentDocId=''){
+ const errors=[],warnings=[];
+ if(!clean(v.supplier_name))errors.push('Supplier name is missing from the extracted invoice');
+ if(!clean(v.invoice_number))errors.push('Invoice number is missing');
+ if(!parseDate(v.invoice_date))errors.push('Invoice date is missing or invalid');
+ if(!clean(v.invoice_total))errors.push('Grand total printed on the invoice is missing');
+ else{try{if(money(v.invoice_total)<=0n)errors.push('Grand total must be positive')}catch{errors.push('Invoice grand total is not a valid amount')}}
+ if(clean(v.supplier_gstin)&&!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/i.test(v.supplier_gstin))errors.push('Supplier GSTIN is invalid');
+ if(!(v.lines||[]).length)errors.push('No invoice items found — add the printed item rows');
+ for(const [i,line] of (v.lines||[]).entries()){
+  if(!clean(line.description))errors.push(`Item ${i+1}: printed description is required`);
+  for(const [key,title,positive] of [['qty','quantity',true],['rate','rate',false]]){
+   if(!clean(line[key]))errors.push(`Item ${i+1}: ${title} is missing`);
+   else{try{if(positive&&fixed(line[key],4)<=0n)errors.push(`Item ${i+1}: quantity must be positive`);else if(!positive&&fixed(line[key],4)<0n)errors.push(`Item ${i+1}: rate must not be negative`)}catch{errors.push(`Item ${i+1}: invalid ${title}`)}}
+  }
+  if(clean(line.source_amount)){
+   try{
+    const source=money(line.source_amount);
+    if(source<0n)errors.push(`Item ${i+1}: printed amount cannot be negative`);
+    if(clean(line.qty)&&clean(line.rate)){
+     const implied=roundHalfUp(fixed(line.qty,4)*fixed(line.rate,4),1000000n);
+     const delta=source>implied?source-implied:implied-source;
+     if(delta>2n)warnings.push(`Item ${i+1}: printed ₹${formatPaise(source)} differs from quantity × rounded rate ₹${formatPaise(implied)}. Verify the original; do not overwrite the printed amount.`);
+    }
+   }catch{errors.push(`Item ${i+1}: invalid printed amount`)}
+  }
+  if(clean(line.gst_rate)){try{if(fixed(line.gst_rate,2)>10000n)errors.push(`Item ${i+1}: GST rate must be 0–100%`)}catch{errors.push(`Item ${i+1}: invalid GST rate`)}}
+ }
+ const duplicate=otherDocs.some(d=>d.id!==currentDocId&&low(d.review?.invoice_number)===low(v.invoice_number)&&low(d.review?.supplier_name)===low(v.supplier_name)&&clean(v.invoice_number)&&clean(v.supplier_name));
+ if(duplicate)warnings.push('Another document for this supplier has the same invoice number. Check for duplicates.');
+ for(const field of ['source_taxable','source_cgst','source_sgst','source_igst'])if(clean(v[field])){try{if(money(v[field])<0n)errors.push(`${field.replace('source_','')} must not be negative`)}catch{errors.push(`Invalid ${field.replace('source_','')} amount`)}}
+ // Invoice tax totals remain source observations, not substitutes for explicitly verified line GST rates.
+ const inputs=(v.lines||[]).every(x=>clean(x.qty)&&clean(x.rate)&&clean(x.gst_rate));
+ let calculation=null;
+ if(inputs&&v.lines?.length){try{calculation=calculate(v)}catch(err){warnings.push(`Accounting estimate unavailable: ${err.message}`)}}
+ if(calculation&&clean(v.invoice_total)){
+  try{const source=money(v.invoice_total);const estimated=calculation.totals.grand;const diff=source>estimated?source-estimated:estimated-source;if(diff>2n)warnings.push(`Calculated voucher ₹${formatPaise(estimated)} differs from printed grand total ₹${formatPaise(source)}. Check GST/discount/round-off before Tally export.`)}catch{}
+ }else if(!inputs)warnings.push('GST or line amount details need verification before a calculated voucher can be shown.');
+ return {valid:errors.length===0,errors:[...new Set(errors)],warnings:[...new Set(warnings)],calculation};
+}
 export function checkReview(v,masters=[],otherDocs=[],currentDocId=''){
  const errors=[];
  if(!clean(v.supplier_name))errors.push('Supplier name from invoice is required');
