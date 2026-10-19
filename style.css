@@ -7,3 +7,11 @@
 @media(max-width:720px){.test-banner{padding:8px 12px;font-size:11px}.top-actions .ghost{font-size:11px;padding:8px 9px}.side{gap:9px}.quick-actions{margin-top:0}.language-label{display:flex;align-items:center;justify-content:space-between}.language-label select{width:auto;max-width:72%;padding:7px}.original-container{height:250px}.raw-box{max-height:115px}.review-head{flex-wrap:wrap}.review-tools{position:sticky;top:0;z-index:9;background:#f6f7f8;padding:9px 0;box-shadow:0 3px 6px #00000008}.line-fields input,.form-grid input,.form-grid select{font-size:16px}body{padding-bottom:env(safe-area-inset-bottom)}}
 
 .quick-actions{grid-template-columns:1fr 1fr 1fr}.quick-actions .camera-btn{display:grid;place-items:center;color:white;background:#e95f13;border:1px solid #e95f13;font-size:12px;margin:0;white-space:nowrap}.quick-actions .btn{font-size:11px}
+
+/* Visible, actionable OCR status. Does not hide failed extraction behind validation. */
+.ocr-panel{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#eaf4ef;border:1px solid #91c7ac;border-radius:14px;padding:14px 16px;margin:14px 0;color:#1a503b}
+.ocr-panel.partial{background:#fff7e9;border-color:#eecb84;color:#795215}
+.ocr-panel.failed{background:#fff0ee;border-color:#e9a69b;color:#8a3023}
+.ocr-panel p{margin:5px 0 0;color:inherit;line-height:1.45}
+.ocr-panel .btn{flex-shrink:0}
+@media(max-width:650px){.ocr-panel{flex-direction:column;align-items:stretch}.ocr-panel .btn{width:100%;min-height:44px}}

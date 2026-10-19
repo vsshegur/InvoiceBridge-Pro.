@@ -10,7 +10,7 @@
 </div>
 <div id="shell" hidden>
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">IB</div><div><strong>InvoiceBridge</strong><small>Mobile test • v0.5</small></div></div>
+    <div class="brand"><div class="brand-mark">IB</div><div><strong>InvoiceBridge</strong><small>Mobile test • v0.5.2</small></div></div>
     <div class="top-actions"><span class="privacy-pill"><i></i> Local on this device</span><button class="btn ghost" id="logoutBtn">Copy diagnostics</button></div>
   </header>
   <div class="test-banner"><strong>TEST BUILD</strong> Files remain in this device’s browser. No account sync, cloud backup or live Tally posting. Use sample data first.</div>
@@ -28,6 +28,7 @@
       <div class="review-screen" id="reviewScreen" hidden>
         <div class="review-head"><div><div class="eyebrow">PURCHASE VOUCHER DRAFT</div><h1 id="reviewTitle">Invoice review</h1><p id="documentInfo" class="muted"></p></div><div id="statusPill" class="status-chip draft">Draft · Not approved</div></div>
         <div class="review-tools"><button id="saveBtn" class="btn secondary">Save changes</button><button id="validateBtn" class="btn secondary">Run checks</button><button id="approveBtn" class="btn primary">✓ Approve</button><button id="exportBtn" class="btn dark" disabled>↓ Export Tally XML</button></div>
+        <div class="ocr-panel" id="ocrPanel" role="status"><div><strong id="ocrStatusTitle">Checking extraction…</strong><p id="ocrStatusText" class="muted small">Extracted details must be verified against the original invoice.</p></div><button id="ocrRetryBtn" class="btn secondary" type="button">↻ Retry OCR</button></div>
         <div class="feedback" id="feedback" hidden></div>
         <div class="editor-columns">
           <div class="original-panel"><div class="panel-title"><strong>Original document</strong><span>Reference</span></div><div id="originalContainer" class="original-container"></div><div class="panel-title text-top"><strong>Extracted text</strong><span>OCR and extracted text are unverified</span></div><pre class="raw-box" id="rawText"></pre></div>

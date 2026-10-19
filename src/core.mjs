@@ -1,3 +1,4 @@
+import {parseInvoiceText} from './invoice-parser.mjs';
 /** InvoiceBridge Pro - pure, deterministic accounting and mapping helpers.
  * Never marks unverified OCR, fuzzy matches or Tally XML as posted.
  */
@@ -58,13 +59,7 @@ export function parseMasters(xml){if(typeof xml!=='string'||xml.length>20*1024*1
  const unique=new Map(result.map(x=>[x.kind+'|'+low(x.name),x]));if(!unique.size)throw Error('No Tally ledgers, groups or stock items found');return [...unique.values()];}
 export function isCreditor(row,masters){const parents=new Map(masters.filter(x=>x.kind==='group').map(x=>[low(x.name),low(x.parent)]));let node=low(row.parent);const seen=new Set();while(node&&!seen.has(node)){if(node==='sundry creditors')return true;seen.add(node);node=parents.get(node)||''}return false;}
 export function emptyReview(){return {supplier_name:'',supplier_ledger:'',supplier_gstin:'',invoice_number:'',invoice_date:'',invoice_total:'',purchase_ledger:'',tax_cgst_ledger:'',tax_sgst_ledger:'',tax_igst_ledger:'',freight_ledger:'',round_ledger:'',gst_mode:'intra',freight:'0',round_off:'0',lines:[],notes:[],detected_gstins:[]}}
-export function extractGuess(raw,notes=[]){const t=String(raw).slice(0,150000),pick=patterns=>{for(const p of patterns){const m=t.match(p);if(m)return clean(m[1]).replace(/[:#\s]+$/,'')}return ''};
- const r=emptyReview();r.invoice_number=pick([/(?:invoice|inv|bill)\s*(?:number|no\.?|#)\s*[:#-]?\s*([A-Z0-9/-]{1,32})/im]);
- r.invoice_date=parseDate(pick([/(?:invoice\s*date|bill\s*date|date)\s*[:\-]?\s*(\d{1,4}[./-]\d{1,2}[./-]\d{2,4})/im]));
- r.invoice_total=pick([/(?:grand\s*total|invoice\s*total|net\s*amount|amount\s*payable|total\s*amount)\s*[:₹Rs.\s]*([\d,]+(?:\.\d{1,2})?)/im]).replace(/,/g,'');
- r.supplier_name=pick([/(?:supplier|sold\s*by|vendor|from)\s*[:\-]\s*([^\r\n\t]{3,70})/im]);
- const gst=[...t.matchAll(/\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]\b/gi)].map(x=>x[0].toUpperCase());r.detected_gstins=[...new Set(gst)].slice(0,10);
- r.notes=[...notes,'OCR values are hints; verify ALL fields, item rows and the supplier in the source document.'];return r;}
+export function extractGuess(raw,notes=[]){return parseInvoiceText(raw,notes,{emptyReview,parseDate});}
 export function simpleCSVRows(text){const rows=text.replace(/^\uFEFF/,'').split(/\r?\n/).slice(0,800).map(line=>line.split(',').map(v=>v.replace(/^"|"$/g,'').trim()));
  // This limited parser handles simple spreadsheets only; mixed CSV quoting must be manually reviewed.
  let headerIndex=rows.findIndex(r=>r.some(v=>/^(item|product|description|item name)$/i.test(v))&&r.some(v=>/^qty|quantity$/i.test(v))&&r.some(v=>/^rate|price$/i.test(v)));

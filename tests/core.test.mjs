@@ -22,3 +22,18 @@ test('XML escapes tags in voucher number',()=>{const v=base();v.invoice_number='
 test('basic extraction never approves a voucher',()=>{const x=extractGuess('Supplier: DEMO SUPPLIER\nInvoice No: 241\nDate: 19/10/2026\nGrand Total: 5250');assert.equal(x.invoice_number,'241');assert.equal(x.invoice_date,'2026-10-19');assert.equal(x.supplier_ledger,'');assert.equal(x.lines.length,0)});
 test('CSV row parsing requires explicit ledger matching',()=>{const rows=simpleCSVRows('Item,Qty,Rate\nCotton Hand Towel,100,50\nGrand Total,5250');assert.equal(rows.length,1);assert.equal(rows[0].stock_item,'')});
 test('negative freight and out-of-range quantity rejected',()=>{const v=base();v.freight='-3';assert.throws(()=>calculate(v));v.freight='0';v.lines[0].qty='0';assert.throws(()=>calculate(v))});
+
+test('printed Tally column header OCR extracts invoice details without Supplier: label',()=>{
+ const scan=`Tax Invoice\nGAYATRI YARN AND TEX\nPLOT NO 110, NEW SUNIL NAGAR\nInvoice No. Dated\n220 15-Jun-26\nBuyer (Bill to)\nVijayalaxmi Textiles\nDescription of Goods HSN/SAC Quantity Rate per Amount\n12x18 Towel 30gm 6304 2,400 PCS 7.08 PCS 17,000.00\nTotal 17,672.00`;
+ const r=extractGuess(scan);assert.equal(r.supplier_name,'GAYATRI YARN AND TEX');assert.equal(r.invoice_number,'220');assert.equal(r.invoice_date,'2026-06-15');assert.equal(r.invoice_total,'17672.00');
+ assert.equal(r.lines.length,0,'OCR must not invent rows where quantity * rate differs from printed amount');
+ assert.equal(r.supplier_ledger,'');
+});
+test('supplier GSTIN from header, not buyer GSTIN',()=>{
+ const scan=`Supplier: ABC Textiles\nGSTIN: 27ABCDE1234F1Z7\nInvoice No. 102\nDated 15-Jun-26\nBuyer (Bill to)\nGSTIN: 27ZZZZZ1111A1Z1\nGrand Total: 1250.00`;
+ const r=extractGuess(scan);assert.equal(r.supplier_gstin,'27ABCDE1234F1Z7');assert.equal(r.invoice_number,'102');assert.equal(r.invoice_date,'2026-06-15');assert.equal(r.invoice_total,'1250.00');
+});
+test('only matching printed item arithmetic creates an unmapped suggestion',()=>{
+ const r=extractGuess(`Supplier: ABC Textiles\nInvoice No. 10\nDate: 19/10/2026\nGrand Total: 5250.00\nCotton Towel 6302 100 NOS 50.00 NOS 5000.00`);
+ assert.equal(r.lines.length,1);assert.equal(r.lines[0].qty,'100');assert.equal(r.lines[0].stock_item,'');assert.equal(r.lines[0].gst_rate,'0');
+});
