@@ -67,3 +67,12 @@ No API endpoints send your invoice bytes anywhere. There is no login, cloud stor
 2. Evaluate at least two high-grade cloud/vision OCR providers on real handwritten English/Hindi/Marathi examples with human correction.
 3. Secure accounts, company permissions, proper storage, backups, audit logs and cross-device synchronization.
 4. Windows Tally connector: read-only master synchronization first, then explicit approved transaction transmission, Tally response verification and idempotency.
+
+## October 2026 OCR update (v0.7.0)
+
+- Image OCR now has optional targeted header, item-table, and totals re-scans. Basic OCR is attempted first; extra passes are used when vital fields are missing. A detailed re-scan is also available from invoice review.
+- Tally-style OCR parsing recognizes column headers, GST, discounts, amount in words, and printed line amounts. It does **not** invent unclear handwritten invoice numbers.
+- Amounts obtained by cross-checking printed tax/discount values and apparent OCR conflicts are flagged for human verification.
+- No Tally master imports required for extraction review. Live posting remains unavailable.
+- The public repository contains synthetic redacted OCR test fixtures only; uploaded supplier documents are never committed to GitHub.
+- This remains a **prototype**. Tesseract is not a reliable replacement for production handwriting/document-AI extraction, and device/browser OCR results need live validation.

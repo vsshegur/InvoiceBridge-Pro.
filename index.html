@@ -10,7 +10,7 @@
 </div>
 <div id="shell" hidden>
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">IB</div><div><strong>InvoiceBridge</strong><small>Extraction testing • v0.6.0</small></div></div>
+    <div class="brand"><div class="brand-mark">IB</div><div><strong>InvoiceBridge</strong><small>Extraction testing • v0.7.0</small></div></div>
     <div class="top-actions"><span class="privacy-pill"><i></i> Local on this device</span><button class="btn ghost" id="logoutBtn">Copy diagnostics</button></div>
   </header>
   <div class="test-banner"><strong>EXTRACTION TEST</strong> Upload invoices and check OCR before matching Tally masters. Files stay in this device’s browser; no cloud sync or live Tally posting.</div>
@@ -28,7 +28,7 @@
       <div class="review-screen" id="reviewScreen" hidden>
         <div class="review-head"><div><div class="eyebrow">INVOICE DATA EXTRACTION</div><h1 id="reviewTitle">Invoice review</h1><p id="documentInfo" class="muted"></p></div><div id="statusPill" class="status-chip draft">Draft · Not approved</div></div>
         <div class="review-tools"><button id="saveBtn" class="btn secondary" type="button">Save draft</button><button id="validateBtn" class="btn secondary" type="button">Check extracted data</button><button id="verifyBtn" class="btn primary" type="button">✓ Verify extraction</button></div>
-        <div class="ocr-panel" id="ocrPanel" role="status"><div><strong id="ocrStatusTitle">Checking extraction…</strong><p id="ocrStatusText" class="muted small">Extracted details must be verified against the original invoice.</p></div><button id="ocrRetryBtn" class="btn secondary" type="button">↻ Retry OCR</button></div>
+        <div class="ocr-panel" id="ocrPanel" role="status"><div><strong id="ocrStatusTitle">Checking extraction…</strong><p id="ocrStatusText" class="muted small">Extracted details must be verified against the original invoice.</p><div id="ocrAdvisories" class="ocr-advisories" hidden></div></div><button id="ocrRetryBtn" class="btn secondary" type="button">↻ Detailed OCR scan</button></div>
         <div class="feedback" id="feedback" hidden></div>
         <div class="editor-columns">
           <div class="original-panel"><div class="panel-title"><strong>Original document</strong><span>Reference</span></div><div id="originalContainer" class="original-container"></div><div class="panel-title text-top"><strong>Extracted text</strong><span>OCR and extracted text are unverified</span></div><pre class="raw-box" id="rawText"></pre></div>
@@ -36,6 +36,8 @@
             <div class="panel-title"><strong>Extracted invoice fields</strong><span>Editable · No Tally masters needed</span></div>
             <div class="form-grid"><label class="wide">Supplier name on invoice <span class="required">*</span><input required name="supplier_name" placeholder="As printed on supplier invoice"></label>
             <label>Supplier GSTIN<input name="supplier_gstin" placeholder="Optional, verify with source" maxlength="15"></label>
+            <label class="wide">Buyer / bill-to name<input name="buyer_name" placeholder="As shown in Buyer (Bill to)"></label>
+            <label>Buyer GSTIN<input name="buyer_gstin" placeholder="Verify against original" maxlength="15"></label>
             <label>Invoice number <span class="required">*</span><input name="invoice_number" required></label>
             <label>Invoice date <span class="required">*</span><input name="invoice_date" type="date" required></label>
             <label>Original grand total (₹) <span class="required">*</span><input name="invoice_total" inputmode="decimal" required placeholder="As printed on invoice"></label>

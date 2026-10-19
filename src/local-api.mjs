@@ -63,27 +63,93 @@ async function readPDF(file,onProgress){await script(pdfjsURL,'pdfjs');pdfjsLib.
 }
 async function readSheet(file){await script(xlsxURL,'xlsx');const workbook=XLSX.read(await file.arrayBuffer(),{type:'array',cellFormula:false,cellHTML:false,cellDates:false});const parts=[],notes=['Spreadsheet values are hints; verify all formulas, layouts and totals.'];const allRows=[];
  for(const sheetName of workbook.SheetNames.slice(0,12)){const rows=XLSX.utils.sheet_to_json(workbook.Sheets[sheetName],{header:1,blankrows:false,defval:''});parts.push(`--- SHEET ${sheetName} ---`);allRows.push(...parseTableRows(rows));for(const row of rows.slice(0,1500)){parts.push(row.slice(0,25).map(v=>String(v??'').replace(/[\t\r\n]/g,' ')).join('\t'))}if(rows.length>1500)notes.push(`Sheet ${sheetName}: truncated at 1500 rows`)}return {raw:parts.join('\n').slice(0,150000),notes,rows:allRows.slice(0,120)};}
-async function readDocument(file,onProgress,{enhance=false}={}){const type=ext(file);if(type==='pdf')return readPDF(file,onProgress);
- if(['jpg','jpeg','png','webp'].includes(type)){const notes=['Camera/handwritten OCR is approximate; check amounts and stock rows manually.'];try{return {raw:(await ocr(file,onProgress,{enhance})).slice(0,150000),notes}}catch(err){notes.push('OCR error: '+err.message+'; enter invoice details manually.');return {raw:'',notes}}}
+const REGIONS={
+ header:{top:0.05,height:0.46},
+ items:{top:0.30,height:0.48},
+ totals:{top:0.53,height:0.39}
+};
+async function readRegion(bitmap,which,onProgress){
+ const reg=REGIONS[which];const sy=Math.floor(bitmap.height*reg.top),sh=Math.max(1,Math.min(bitmap.height-sy,Math.ceil(bitmap.height*reg.height)));
+ const sw=bitmap.width,scale=Math.min(2.6,2300/Math.max(sw,sh));const w=Math.max(1,Math.round(sw*scale)),h=Math.max(1,Math.round(sh*scale));
+ const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+ const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(bitmap,0,sy,sw,sh,0,0,w,h);
+ const img=ctx.getImageData(0,0,w,h),d=img.data;
+ for(let i=0;i<d.length;i+=4){const gray=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];const v=Math.min(255,Math.max(0,(gray-128)*1.33+128));d[i]=d[i+1]=d[i+2]=v;}
+ ctx.putImageData(img,0,0);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.9));canvas.width=canvas.height=0;
+ if(!blob)return '';
+ onProgress(`Focused OCR: ${which}…`);
+ await currentWorker.setParameters({tessedit_pageseg_mode:'6'});
+ try{return (await currentWorker.recognize(blob)).data.text||'';}
+ finally{await currentWorker.setParameters({tessedit_pageseg_mode:'3'});}
+}
+function mergeOCR(extracted){
+ const review=extractGuess(extracted.raw,extracted.notes),notes=[];
+ for(const [section,raw] of Object.entries(extracted.regions||{})){
+  const hint=extractGuess(raw);
+  for(const key of ['supplier_name','supplier_gstin','buyer_name','buyer_gstin','invoice_number','invoice_date','invoice_total','source_taxable','source_cgst','source_sgst','source_igst','round_off']){
+   if(!clean(review[key])&&clean(hint[key])){review[key]=hint[key];notes.push(`${key.replaceAll('_',' ')} suggested from focused ${section} OCR; verify in photo.`);}
+   else if(['invoice_number','invoice_date','invoice_total'].includes(key)&&clean(review[key])&&clean(hint[key])&&review[key]!==hint[key]){
+    notes.push(`OCR disagreement for ${key.replaceAll('_',' ')}: full photo says ${review[key]}, ${section} scan says ${hint[key]}. Review original.`);
+   }
+  }
+  if(section==='items'&&hint.lines.length){
+   if(!review.lines.length){review.lines=hint.lines;notes.push('Item rows suggested from focused table OCR.');}
+   else for(const row of review.lines){
+    const match=hint.lines.find(x=>x.description.toLowerCase().replace(/\W/g,'')===row.description.toLowerCase().replace(/\W/g,''))||(review.lines.length===1&&hint.lines.length===1&&(row.hsn&&row.hsn===hint.lines[0].hsn||row.qty&&row.qty===hint.lines[0].qty)?hint.lines[0]:null);
+    if(match)for(const key of ['hsn','source_amount','qty','unit','rate','gst_rate','discount'])if(!clean(row[key])&&clean(match[key]))row[key]=match[key];
+   }
+  }
+  review.detected_gstins=[...new Set([...(review.detected_gstins||[]),...(hint.detected_gstins||[])])];
+ }
+ review.notes=[...(review.notes||[]),...notes];return review;
+}
+async function readDocument(file,onProgress,{enhance=false}={}){
+ const type=ext(file);if(type==='pdf')return readPDF(file,onProgress);
+ if(['jpg','jpeg','png','webp'].includes(type)){
+  const notes=['On-device OCR. Printed and handwritten results must be verified with the original.'];
+  try{
+   const raw=(await ocr(file,onProgress,{enhance})).slice(0,150000),initial=extractGuess(raw),regions={};
+   const core=['supplier_name','invoice_number','invoice_date','invoice_total'].filter(k=>!!initial[k]).length;
+   const lowQuality=core<4||!initial.lines.length||initial.lines.some(x=>!x.source_amount)||!initial.source_cgst&&!initial.source_sgst;
+   if(enhance||lowQuality){
+    const targets=enhance?['header','items','totals']:[
+     ...(!initial.invoice_number||!initial.invoice_date||!initial.supplier_name?['header']:[]),
+     ...(!initial.lines.length||initial.lines.some(x=>!x.source_amount)?['items']:[]),
+     ...(!initial.invoice_total?['totals']:[])
+    ];
+    if(targets.length){
+     onProgress('Scanning missing invoice regions…');
+     let bitmap=null;
+     try{bitmap=await createImageBitmap(file);
+      for(const area of targets){try{regions[area]=await readRegion(bitmap,area,onProgress)}catch(err){notes.push(`${area} focused scan unavailable: ${err.message}`);}}
+     }catch(err){notes.push(`Focused OCR unavailable: ${err.message}`)}
+     finally{bitmap?.close();}
+    }
+   }
+   return {raw,notes,regions};
+  }catch(err){notes.push('OCR error: '+err.message+'; enter invoice details manually.');return {raw:'',notes,regions:{}};}
+ }
  if(['xlsx','xls'].includes(type))return readSheet(file);
- if(type==='csv')return {raw:(await file.text()).slice(0,150000),notes:['CSV read directly. Verify column mapping and amount values.']};throw Error('Unsupported file type');}
+ if(type==='csv')return {raw:(await file.text()).slice(0,150000),notes:['CSV read directly. Verify column mapping and amount values.']};
+ throw Error('Unsupported file type');
+}
 function extractionMeta(raw,review,notes=[]){
  const chars=(raw||'').trim().length,fields=['supplier_name','invoice_number','invoice_date','invoice_total'].filter(k=>!!review[k]).length;
  const error=notes.find(x=>/OCR error|Parser error|OCR unavailable/i.test(x))||'';
- return {state:error||chars<25?'failed':fields<4?'partial':'read',characters:chars,fields,error};
+ return {state:error||chars<25?'failed':fields<4||!review.lines?.length||review.lines.some(x=>!x.source_amount)?'partial':'read',characters:chars,fields,items:review.lines?.length||0,error};
 }
 async function uploadInvoice(company,file,onProgress=()=>{}){
  if(!COMPANIES[company])throw Error('Unknown Tally company');if(!file||!supported.has(ext(file)))throw Error('Choose a JPG, PNG, PDF, XLS, XLSX or CSV invoice');if(!file.size||file.size>MAX_FILE_BYTES)throw Error('Invoice must be between 1 byte and 15 MB');
  const hash=await sha256(file);const previous=(await all('docs')).find(x=>x.company===company&&x.source_sha===hash);if(previous)throw Error(`File already imported in this company: ${previous.filename}`);
  let extracted;try{extracted=await readDocument(file,onProgress)}catch(err){extracted={raw:'',notes:['Parser error: '+err.message+'; review source and type values manually.']}};
- const review=extractGuess(extracted.raw,extracted.notes);if(extracted.rows?.length)review.lines=extracted.rows;if(ext(file)==='csv'){review.lines=simpleCSVRows(extracted.raw);if(!review.supplier_name)review.supplier_name=extracted.raw.split(/\r?\n/)[0]?.split(',')[1]?.trim()||'';}
- const id=crypto.randomUUID(),doc={id,company,filename:file.name,suffix:'.'+ext(file),source_sha:hash,file,raw_text:extracted.raw,review,extraction:extractionMeta(extracted.raw,review,extracted.notes),status:'draft',created:Date.now(),approved:null,approval_hash:null,exported:null};await put('docs',doc);return {id};
+ const review=mergeOCR(extracted);if(extracted.rows?.length)review.lines=extracted.rows;if(ext(file)==='csv'){review.lines=simpleCSVRows(extracted.raw);if(!review.supplier_name)review.supplier_name=extracted.raw.split(/\r?\n/)[0]?.split(',')[1]?.trim()||'';}
+ const id=crypto.randomUUID(),doc={id,company,filename:file.name,suffix:'.'+ext(file),source_sha:hash,file,raw_text:extracted.raw,ocr_details:extracted.regions||{},review,extraction:extractionMeta(extracted.raw,review,extracted.notes),status:'draft',created:Date.now(),approved:null,approval_hash:null,exported:null};await put('docs',doc);return {id};
 }
 const companyDocs=async company=>(await all('docs')).filter(d=>d.company===company).sort((a,b)=>b.created-a.created);
 export async function installDemo(company='vipul'){const txt=await (await fetch('./examples/demo_masters.xml')).text();const ms=parseMasters(txt);await put('masters',{id:company,rows:ms});const csv=await (await fetch('./examples/demo_invoice.csv')).text();const file=new File([csv],'demo_invoice.csv',{type:'text/csv'});
  try{return await uploadInvoice(company,file)}catch(err){if(/already imported/i.test(err.message)){const d=(await companyDocs(company)).find(d=>d.filename==='demo_invoice.csv');if(d)return {id:d.id};}throw err;}}
 export async function downloadBackup(){const [docs,masters,aliases]=await Promise.all([all('docs'),all('masters'),all('aliases')]);const safeDocs=docs.map(({file,...rest})=>rest);return new Blob([JSON.stringify({version:1,created:new Date().toISOString(),docs:safeDocs,masters,aliases,warning:'Original source files are NOT included. This is NOT a complete backup.'},null,2)],{type:'application/json'});}
-export async function diagnosticText(){const docs=await all('docs');return `InvoiceBridge Mobile v0.6.0\nUser agent: ${navigator.userAgent}\nOnline: ${navigator.onLine}\nDocuments saved on this device: ${docs.length}\nStorage API: ${!!indexedDB}\nNo invoice contents included.`}
+export async function diagnosticText(){const docs=await all('docs');return `InvoiceBridge Mobile v0.7.0\nUser agent: ${navigator.userAgent}\nOnline: ${navigator.onLine}\nDocuments saved on this device: ${docs.length}\nStorage API: ${!!indexedDB}\nNo invoice contents included.`}
 export async function localAPI(path,options={}){const {method='GET',body}=options;const url=new URL(path,location.origin),segments=url.pathname.split('/').filter(Boolean),company=url.searchParams.get('company');
  if(url.pathname==='/api/me')return {user:'local device'};
  if(url.pathname==='/api/masters'&&method==='GET'){if(!COMPANIES[company])throw Error('Unknown company');return {masters:(await get('masters',company))?.rows||[]};}
@@ -98,14 +164,15 @@ export async function localAPI(path,options={}){const {method='GET',body}=option
    const existing=extractGuess(doc.raw_text||'');
    const quickHits=['supplier_name','invoice_number','invoice_date','invoice_total'].filter(k=>!!existing[k]).length;
    const type=ext(doc.file);const rescan=['jpg','jpeg','png','webp'].includes(type);const result=quickHits>=2&&!rescan?{raw:doc.raw_text,notes:['Reparsed existing recognized text; no slow OCR download needed.']}:await readDocument(doc.file,message=>{const el=document.getElementById('ocrStatusText');if(el)el.textContent=message;},{enhance:true});
-   const oldText=doc.raw_text||'';const oldInfo=extractGuess(oldText);const newInfo=extractGuess(result.raw,result.notes);const hits=x=>['supplier_name','invoice_number','invoice_date','invoice_total'].filter(k=>!!x[k]).length;const useOld=hits(oldInfo)>hits(newInfo)&&oldText.trim().length>result.raw.trim().length;const chosen=useOld?{raw:oldText,notes:[...result.notes,'Enhanced OCR was weaker; previous recognized text was retained.']}:result;const guessed=useOld?oldInfo:newInfo;
+   const oldText=doc.raw_text||'';const oldInfo=extractGuess(oldText);const newInfo=mergeOCR(result);const hits=x=>['supplier_name','invoice_number','invoice_date','invoice_total'].filter(k=>!!x[k]).length;const useOld=hits(oldInfo)>hits(newInfo)&&oldText.trim().length>result.raw.trim().length;const chosen=useOld?{raw:oldText,notes:[...result.notes,'Enhanced OCR was weaker; previous recognized text was retained.']}:result;const guessed=useOld?oldInfo:newInfo;
    // OCR is only a suggestion: never overwrite reviewer-entered values or accepted Tally masters.
-   const next={...doc.review};for(const key of ['supplier_name','invoice_number','invoice_date','invoice_total'])if(!clean(next[key])&&clean(guessed[key]))next[key]=guessed[key];
-   if(!(next.lines||[]).length&&guessed.lines.length)next.lines=guessed.lines;
-   for(const key of ['source_taxable','source_cgst','source_sgst','source_igst','supplier_gstin'])if(!clean(next[key])&&clean(guessed[key]))next[key]=guessed[key];
+   const next={...doc.review};for(const key of ['supplier_name','invoice_number','invoice_date','invoice_total'])if((!clean(next[key])||next[key]===oldInfo[key])&&clean(guessed[key]))next[key]=guessed[key];
+   if((!(next.lines||[]).length||JSON.stringify(next.lines)===JSON.stringify(oldInfo.lines))&&guessed.lines.length)next.lines=guessed.lines;
+   else if(guessed.lines.length)for(const row of next.lines||[]){const updated=guessed.lines.find(x=>x.description.toLowerCase().replace(/\W/g,'')===row.description.toLowerCase().replace(/\W/g,''));const before=oldInfo.lines?.find(x=>x.description.toLowerCase().replace(/\W/g,'')===row.description.toLowerCase().replace(/\W/g,''));if(updated)for(const key of ['hsn','qty','rate','unit','source_amount','discount','gst_rate'])if((!clean(row[key])||before&&row[key]===before[key])&&clean(updated[key]))row[key]=updated[key];}
+   for(const key of ['source_taxable','source_cgst','source_sgst','source_igst','supplier_gstin','buyer_name','buyer_gstin','round_off'])if((!clean(next[key])||next[key]===oldInfo[key])&&clean(guessed[key]))next[key]=guessed[key];
    next.detected_gstins=[...new Set([...(next.detected_gstins||[]),...guessed.detected_gstins])];
    next.notes=[...(next.notes||[]),...guessed.notes];
-   doc.raw_text=chosen.raw;doc.review=next;doc.extraction=extractionMeta(chosen.raw,guessed,chosen.notes);doc.status='draft';doc.approved=null;doc.approval_hash=null;doc.extraction_verified=null;doc.extraction_verify_hash=null;
+   doc.raw_text=chosen.raw;doc.ocr_details=useOld?doc.ocr_details||{}:result.regions||{};doc.review=next;doc.extraction=extractionMeta(chosen.raw,guessed,chosen.notes);doc.status='draft';doc.approved=null;doc.approval_hash=null;doc.extraction_verified=null;doc.extraction_verify_hash=null;
    await put('docs',doc);return {document:doc,extraction:doc.extraction};
   }
   if(segments[3]==='review'&&method==='POST'){if(doc.status==='exported')throw Error('Exported draft is locked to preserve the review audit trail');const v=content(body);doc.review=v;doc.status='draft';doc.approved=null;doc.approval_hash=null;doc.extraction_verified=null;doc.extraction_verify_hash=null;await put('docs',doc);return {saved:true};}

@@ -26,3 +26,5 @@
 .item-mapping label{display:block;margin-top:9px}.item-mapping select,.item-mapping input{width:100%;padding:10px 11px;border:1px solid #dfe4e7;border-radius:9px;background:white;font-size:16px;color:#29323b;margin-top:5px}
 .invoice-amount-note{font-size:11px;color:#955e24;margin:9px 0 0}.extraction-ok{background:#dbf5e9!important;color:#188c60!important}.dot.verified{background:#188c60}.review-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.review-tools .btn{white-space:normal}
 @media(max-width:720px){.review-tools{grid-template-columns:1fr 1fr}.review-tools #verifyBtn{grid-column:1/-1}.mapping-panel>summary{flex-wrap:wrap}.mapping-panel>summary span{width:100%;padding-left:20px}.mapping-tools{grid-template-columns:1fr}.mapping-tools .btn:last-child{grid-column:auto}}
+
+.ocr-advisories{margin-top:10px;font-size:12px;line-height:1.45;color:var(--text,#24262e)}.ocr-advisories p{margin:5px 0}.ocr-panel .ocr-advisories{max-height:12rem;overflow:auto}

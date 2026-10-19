@@ -24,9 +24,9 @@ test('CSV row parsing requires explicit ledger matching',()=>{const rows=simpleC
 test('negative freight and out-of-range quantity rejected',()=>{const v=base();v.freight='-3';assert.throws(()=>calculate(v));v.freight='0';v.lines[0].qty='0';assert.throws(()=>calculate(v))});
 
 test('printed Tally column header OCR extracts invoice details without Supplier: label',()=>{
- const scan=`Tax Invoice\nGAYATRI YARN AND TEX\nPLOT NO 110, NEW SUNIL NAGAR\nInvoice No. Dated\n220 15-Jun-26\nBuyer (Bill to)\nVijayalaxmi Textiles\nDescription of Goods HSN/SAC Quantity Rate per Amount\n12x18 Towel 30gm 6304 2,400 PCS 7.08 PCS 17,000.00\nTotal 17,672.00`;
- const r=extractGuess(scan);assert.equal(r.supplier_name,'GAYATRI YARN AND TEX');assert.equal(r.invoice_number,'220');assert.equal(r.invoice_date,'2026-06-15');assert.equal(r.invoice_total,'17672.00');
- assert.equal(r.lines.length,1,'OCR should preserve the printed line for human verification even when displayed rate is rounded');assert.equal(r.lines[0].source_amount,'17000');assert.equal(r.lines[0].stock_item,'');
+ const scan=`Tax Invoice\nSAMPLE YARN AND TEX\nPLOT NO 110, NEW SUNIL NAGAR\nInvoice No. Dated\n220 15-Jun-26\nBuyer (Bill to)\nVijayalaxmi Textiles\nDescription of Goods HSN/SAC Quantity Rate per Amount\n12x18 Towel 30gm 6304 2,400 PCS 7.08 PCS 17,000.00\nTotal 17,672.00`;
+ const r=extractGuess(scan);assert.equal(r.supplier_name,'SAMPLE YARN AND TEX');assert.equal(r.invoice_number,'220');assert.equal(r.invoice_date,'2026-06-15');assert.equal(r.invoice_total,'17672.00');
+ assert.equal(r.lines.length,1,'OCR should preserve the printed line for human verification even when displayed rate is rounded');assert.equal(Number(r.lines[0].source_amount),17000);assert.equal(r.lines[0].stock_item,'');
  assert.equal(r.supplier_ledger,'');
 });
 test('supplier GSTIN from header, not buyer GSTIN',()=>{
@@ -62,4 +62,37 @@ test('printed tax amounts are suggestions, not invented percentages',()=>{
 test('mismatched source amount is an extraction warning rather than disappearing from form',()=>{
  const v={...base(),lines:[{description:'Towel',qty:'2400',rate:'7.08',source_amount:'17000',unit:'PCS',gst_rate:''}]};
  const r=checkExtraction(v,[]);assert.equal(r.valid,true);assert.ok(r.warnings.some(x=>x.includes('printed ₹17000.00')));
+});
+
+import {tally405,tally411} from './fixtures-ocr.mjs';
+test('actual photographed printed Tally invoice 405 OCR recovers all critical fields, figures and one item',()=>{
+ const r=extractGuess(tally405);
+ assert.equal(r.supplier_name,'SAMPLE YARN AND TEX');
+ assert.equal(r.invoice_number,'405');
+ assert.equal(r.invoice_date,'2026-09-21');
+ assert.equal(r.invoice_total,'54886.00');
+ assert.equal(r.source_taxable,'52272.00');
+ assert.equal(r.source_cgst,'1306.80');
+ assert.equal(r.source_sgst,'1306.80');
+ assert.equal(r.round_off,'0.40');
+ assert.equal(r.lines.length,1);
+ assert.equal(r.lines[0].description,'12x18 Towel 30gm');
+ assert.equal(r.lines[0].hsn,'6304');
+ assert.equal(Number(r.lines[0].qty),7200);
+ assert.equal(Number(r.lines[0].rate),7.33);
+ assert.equal(Number(r.lines[0].source_amount),52800);
+ assert.equal(Number(r.lines[0].discount),528);
+ assert.equal(Number(r.lines[0].gst_rate),5);
+ assert.equal(r.supplier_ledger,'');
+});
+test('actual Tally photo with handwritten number leaves number for manual review and detects OCR total conflict via amount in words',()=>{
+ const r=extractGuess(tally411);
+ assert.equal(r.supplier_name,'SAMPLE YARN AND TEX');
+ assert.equal(r.invoice_number,'','unreadable handwritten invoice number must not be invented');
+ assert.equal(r.invoice_date,'2026-09-26');
+ assert.equal(r.invoice_total,'54885.60');
+ assert.ok(r.notes.some(s=>/OCR numeric total.*disagrees/i.test(s)));
+ assert.equal(r.lines.length,1);
+ assert.equal(Number(r.lines[0].source_amount),52800);
+ assert.equal(Number(r.lines[0].discount),528);
 });
