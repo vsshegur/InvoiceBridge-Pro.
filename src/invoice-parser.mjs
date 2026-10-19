@@ -28,7 +28,7 @@ function normalizedDate(value, parseDate) {
 function findSupplier(lines){
  const label=lines.find(l=>/\b(?:supplier|sold\s+by|vendor|seller)\s*[:\-]/i.test(l));
  if(label){const m=label.match(/\b(?:supplier|sold\s+by|vendor|seller)\s*[:\-]\s*(.+)$/i);if(m&&m[1].length>3)return trim(m[1]).slice(0,100);}
- const buyer=lines.findIndex(x=>/buyer\s*\(?\s*bill|consignee|bill\s*to/i.test(x));
+ const buyer=lines.findIndex(x=>/(?:buyer|bayer)\s*\(?\s*bill?|consignee|bill\s*to/i.test(x));
  const header=lines.slice(0,buyer>=0?buyer:Math.min(lines.length,18));
  for(const raw of header){
   const s=raw.replace(/^[^A-Za-z]+/, '').replace(/[|\s]+$/,'').trim();
@@ -76,7 +76,8 @@ function findInvoiceDate(lines,parseDate){
 }
 function parseAmountWords(lines){
  // Typically "INR Fifty Four Thousand Eight Hundred Eighty Six Only".
- const start=lines.findIndex(s=>/(?:^|[^A-Za-z])INR\s+[a-z]+/i.test(s)&&/\b(?:thousand|hundred|lakh|only)\b/i.test(s));
+ const taxWordsAt=lines.findIndex(s=>/tax\s*amount\s*\(?\s*in\s*words\s*\)?/i.test(s));
+ const start=lines.findIndex((s,i)=>(taxWordsAt<0||i<taxWordsAt)&&/(?:^|[^A-Za-z])INR\s+[a-z]+/i.test(s)&&/\b(?:thousand|hundred|lakh|only)\b/i.test(s));
  if(start<0)return '';
  const chunk=lines.slice(start,Math.min(start+3,lines.length)).join(' ');
  const m=chunk.match(/(?:^|[^A-Za-z])INR\s+([\w\s-]+?)\s+Only\b/i);if(!m)return '';
@@ -186,10 +187,10 @@ function gstins(lines){
  return [...new Set(arr)];
 }
 function buyerName(lines){
- const buyer=lines.findIndex(s=>/buyer\s*\(?\s*bill|\bbill\s*to\b/i.test(s));if(buyer<0)return '';
+ const buyer=lines.findIndex(s=>/(?:buyer|bayer)\s*\(?\s*bill?|\bbill\s*to\b/i.test(s));if(buyer<0)return '';
  for(let i=buyer+1;i<Math.min(buyer+6,lines.length);i++){
   const s=lines[i].replace(/^[^A-Za-z]+/,'').trim();if(/^(?:buyer's|dispatch|delivery|tax|state|gstin|address|road)/i.test(s)||/\d{6}/.test(s))continue;
-  const m=s.match(/(?:Vijayalaxmi|Vipul|[A-Z][a-z]{3,})\s+(?:Textiles|Shegur|Industries|Traders|Yarn|Mill|Fabrics)\b/i);if(m)return m[0];
+  const m=s.match(/(?:[A-Za-z][A-Za-z.&\-]*\s+){1,5}(?:Textiles|Shegur|Industries|Traders|Yarn|Mill|Fabrics|Enterprises|Exports|Corporation)\b/i);if(m)return m[0];
  }
  return '';
 }
@@ -206,7 +207,7 @@ export function parseInvoiceText(raw,notes=[],{emptyReview,parseDate}){
  if(taxes.round_off)review.round_off=taxes.round_off;
  review.buyer_name=buyerName(lines);
  const ids=gstins(lines);review.detected_gstins=ids;
- const buyerAt=lines.findIndex(s=>/buyer\s*\(?\s*bill|\bbill\s*to\b/i.test(s));
+ const buyerAt=lines.findIndex(s=>/(?:buyer|bayer)\s*\(?\s*bill?|\bbill\s*to\b/i.test(s));
  const supplierHeader=lines.slice(0,buyerAt>=0?buyerAt:Math.min(lines.length,18));review.supplier_gstin=gstins(supplierHeader)[0]||'';review.buyer_gstin=buyerAt>=0?gstins(lines.slice(buyerAt))[0]||'':'';
  const items=detectedItems(lines);review.lines=items.items;
  const advisories=[];

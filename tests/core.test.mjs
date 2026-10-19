@@ -24,7 +24,7 @@ test('CSV row parsing requires explicit ledger matching',()=>{const rows=simpleC
 test('negative freight and out-of-range quantity rejected',()=>{const v=base();v.freight='-3';assert.throws(()=>calculate(v));v.freight='0';v.lines[0].qty='0';assert.throws(()=>calculate(v))});
 
 test('printed Tally column header OCR extracts invoice details without Supplier: label',()=>{
- const scan=`Tax Invoice\nSAMPLE YARN AND TEX\nPLOT NO 110, NEW SUNIL NAGAR\nInvoice No. Dated\n220 15-Jun-26\nBuyer (Bill to)\nVijayalaxmi Textiles\nDescription of Goods HSN/SAC Quantity Rate per Amount\n12x18 Towel 30gm 6304 2,400 PCS 7.08 PCS 17,000.00\nTotal 17,672.00`;
+ const scan=`Tax Invoice\nSAMPLE YARN AND TEX\nPLOT NO 110, NEW SUNIL NAGAR\nInvoice No. Dated\n220 15-Jun-26\nBuyer (Bill to)\nSample Buyer Textiles\nDescription of Goods HSN/SAC Quantity Rate per Amount\n12x18 Towel 30gm 6304 2,400 PCS 7.08 PCS 17,000.00\nTotal 17,672.00`;
  const r=extractGuess(scan);assert.equal(r.supplier_name,'SAMPLE YARN AND TEX');assert.equal(r.invoice_number,'220');assert.equal(r.invoice_date,'2026-06-15');assert.equal(r.invoice_total,'17672.00');
  assert.equal(r.lines.length,1,'OCR should preserve the printed line for human verification even when displayed rate is rounded');assert.equal(Number(r.lines[0].source_amount),17000);assert.equal(r.lines[0].stock_item,'');
  assert.equal(r.supplier_ledger,'');
@@ -68,6 +68,8 @@ import {tally405,tally411} from './fixtures-ocr.mjs';
 test('actual photographed printed Tally invoice 405 OCR recovers all critical fields, figures and one item',()=>{
  const r=extractGuess(tally405);
  assert.equal(r.supplier_name,'SAMPLE YARN AND TEX');
+ assert.equal(r.buyer_name,'Sample Buyer Textiles');
+ assert.equal(r.buyer_gstin,'27FGHIJ5678K1Z5');
  assert.equal(r.invoice_number,'405');
  assert.equal(r.invoice_date,'2026-09-21');
  assert.equal(r.invoice_total,'54886.00');
